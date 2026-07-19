@@ -18,7 +18,4 @@ Pillow==11.3.0
 pandas==2.3.2
 
 python-dotenv==1.1.1
-
-reportlab==4.2.2
-fpdf2==2.8.4
 langchain-chroma==0.2.6
