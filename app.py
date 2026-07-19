@@ -1,488 +1,269 @@
-from io import BytesIO
-
-import pandas as pd
+from fpdf import FPDF
 import streamlit as st
-
-from reportlab.lib.styles import getSampleStyleSheet
-from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
-
 from src.graph import graph
 
-
-# ==========================================================
-# PAGE CONFIGURATION
-# ==========================================================
-
+# ---------------------------------------------------
+# Page Configuration
+# ---------------------------------------------------
 st.set_page_config(
     page_title="Health Insurance Claim Adjudication Agent",
     page_icon="🏥",
     layout="wide"
 )
 
-
-# ==========================================================
-# SESSION STATE
-# ==========================================================
-
-DEFAULTS = {
+# ---------------------------------------------------
+# Initialize Session State
+# ---------------------------------------------------
+defaults = {
     "patient_name": "",
     "claim_id": "",
     "policy_number": "",
     "diagnosis": "",
     "treatment": "",
-    "result": None,
-    "form_version": 0
+    "report": None,
+    "result": None
 }
 
-for key, value in DEFAULTS.items():
+for key, value in defaults.items():
     if key not in st.session_state:
         st.session_state[key] = value
 
+# ---------------------------------------------------
+# Header
+# ---------------------------------------------------
+col1, col2 = st.columns([6, 1])
 
-# ==========================================================
-# HELPER FUNCTIONS
-# ==========================================================
-
-def reset_form():
-    """
-    Completely reset the claim form.
-    """
-
-    st.session_state.patient_name = ""
-    st.session_state.claim_id = ""
-    st.session_state.policy_number = ""
-    st.session_state.diagnosis = ""
-    st.session_state.treatment = ""
-
-    st.session_state.result = None
-
-    # Create fresh widgets
-    st.session_state.form_version += 1
-    # ==========================================================
-# HEADER
-# ==========================================================
-
-left, right = st.columns([8, 1])
-
-with left:
-
+with col1:
     st.title("🏥 Health Insurance Claim Adjudication Agent")
 
-    st.caption(
-        "AI Powered Health Insurance Claim Assessment using LangGraph + RAG"
-    )
-
-with right:
-
+with col2:
     st.write("")
     st.write("")
-
-    if st.button(
-        "🆕 New Claim",
-        use_container_width=True
-    ):
-
-        reset_form()
+    if st.button("🆕 New Claim", use_container_width=True):
+        for key in defaults.keys():
+            st.session_state[key] = defaults[key]
         st.rerun()
 
-st.divider()
+st.write(
+    "Enter the patient and claim details below to evaluate the insurance claim."
+)
 
-# ==========================================================
-# CLAIM FORM
-# ==========================================================
+# ---------------------------------------------------
+# Input Form
+# ---------------------------------------------------
+with st.form("claim_form"):
 
-st.subheader("📝 Claim Details")
+    patient_name = st.text_input(
+        "Patient Name",
+        key="patient_name"
+    )
 
-with st.form(f"claim_form_{st.session_state.form_version}"):
+    claim_id = st.text_input(
+        "Claim ID",
+        key="claim_id"
+    )
 
-    left, right = st.columns(2)
+    policy_number = st.text_input(
+        "Policy Number",
+        key="policy_number"
+    )
 
-    with left:
+    diagnosis = st.text_area(
+        "Diagnosis",
+        key="diagnosis"
+    )
 
-        patient_name = st.text_input(
-            "Patient Name",
-            value=st.session_state.patient_name,
-            key=f"patient_name_{st.session_state.form_version}"
-        )
-
-        claim_id = st.text_input(
-            "Claim ID",
-            value=st.session_state.claim_id,
-            key=f"claim_id_{st.session_state.form_version}"
-        )
-
-        diagnosis = st.text_area(
-            "Diagnosis",
-            value=st.session_state.diagnosis,
-            height=120,
-            key=f"diagnosis_{st.session_state.form_version}"
-        )
-
-    with right:
-
-        policy_number = st.text_input(
-            "Policy Number",
-            value=st.session_state.policy_number,
-            key=f"policy_number_{st.session_state.form_version}"
-        )
-
-        treatment = st.text_area(
-            "Treatment",
-            value=st.session_state.treatment,
-            height=120,
-            key=f"treatment_{st.session_state.form_version}"
-        )
+    treatment = st.text_area(
+        "Treatment",
+        key="treatment"
+    )
 
     submitted = st.form_submit_button(
         "✅ Evaluate Claim",
         use_container_width=True
     )
 
-# ==========================================================
-# RUN GRAPH
-# ==========================================================
-
+# ---------------------------------------------------
+# Run Agent
+# ---------------------------------------------------
 if submitted:
 
-    if not all([
-        patient_name.strip(),
-        claim_id.strip(),
-        policy_number.strip(),
-        diagnosis.strip(),
-        treatment.strip()
-    ]):
+    initial_state = {
+        "claim_id": claim_id,
+        "patient_name": patient_name,
+        "policy_number": policy_number,
+        "diagnosis": diagnosis,
+        "treatment": treatment,
+        "retrieved_documents": "",
+        "coverage_result": "",
+        "waiting_period_result": "",
+        "exclusion_result": "",
+        "fraud_result": "",
+        "final_decision": "",
+        "report": ""
+    }
 
-        st.error("Please fill in all the fields before evaluating the claim.")
+    with st.spinner("Evaluating claim..."):
+        result = graph.invoke(initial_state)
 
-    else:
+    # Store the complete result for UI rendering
+    st.session_state.result = result
+    st.session_state.report = result["report"]
 
-        st.session_state.patient_name = patient_name
-        st.session_state.claim_id = claim_id
-        st.session_state.policy_number = policy_number
-        st.session_state.diagnosis = diagnosis
-        st.session_state.treatment = treatment
-
-        initial_state = {
-
-            "claim_id": claim_id,
-
-            "patient_name": patient_name,
-
-            "policy_number": policy_number,
-
-            "diagnosis": diagnosis,
-
-            "treatment": treatment,
-
-            "retrieved_documents": [],
-
-            "coverage_result": {},
-
-            "waiting_period_result": {},
-
-            "exclusion_result": {},
-
-            "fraud_result": {},
-
-            "final_decision": {},
-
-            "report": ""
-
-        }
-
-        try:
-
-            with st.spinner("🔍 Analysing Insurance Policy..."):
-
-                result = graph.invoke(initial_state)
-
-            st.session_state.result = result
-
-        except Exception as e:
-
-            st.error(f"Error while evaluating claim:\n\n{e}")
-# ==========================================================
-# SHOW REPORT
-# ==========================================================
-
+# ---------------------------------------------------
+# Report
+# ---------------------------------------------------
 if st.session_state.result:
 
     result = st.session_state.result
 
-    st.success("✅ Claim Evaluation Completed Successfully")
+    st.success("✅ Claim evaluation completed!")
 
-    # ==========================================================
-    # CLAIM INFORMATION
-    # ==========================================================
+    # -------------------------------
+    # Claim Summary
+    # -------------------------------
+    st.subheader("Claim Summary")
 
-    st.markdown("## 📋 Claim Information")
+    summary_rows = [
+        {"Field": "Patient Name", "Value": result["patient_name"]},
+        {"Field": "Claim ID", "Value": result["claim_id"]},
+        {"Field": "Policy Number", "Value": result["policy_number"]},
+        {"Field": "Diagnosis", "Value": result["diagnosis"]},
+        {"Field": "Treatment", "Value": result["treatment"]},
+    ]
 
-    claim_df = pd.DataFrame(
-        [
-            ["Claim ID", result["claim_id"]],
-            ["Patient Name", result["patient_name"]],
-            ["Policy Number", result["policy_number"]],
-            ["Diagnosis", result["diagnosis"]],
-            ["Treatment", result["treatment"]],
-        ],
-        columns=["Field", "Value"]
-    )
-
-    st.dataframe(
-        claim_df,
-        use_container_width=True,
-        hide_index=True
-    )
-
-    st.write("")
-
-    # ==========================================================
-    # CLAIM EVALUATION
-    # ==========================================================
-
-    st.markdown("## 🔍 Claim Evaluation")
-
-    evaluation_df = pd.DataFrame(
-        [
-            [
-                "Coverage",
-                result["coverage_result"]["status"],
-                result["coverage_result"]["reason"],
-                result["coverage_result"]["evidence"],
-            ],
-            [
-                "Waiting Period",
-                result["waiting_period_result"]["status"],
-                result["waiting_period_result"]["reason"],
-                result["waiting_period_result"]["evidence"],
-            ],
-            [
-                "Exclusion",
-                result["exclusion_result"]["status"],
-                result["exclusion_result"]["reason"],
-                result["exclusion_result"]["evidence"],
-            ],
-            [
-                "Fraud",
-                result["fraud_result"]["status"],
-                result["fraud_result"]["reason"],
-                result["fraud_result"]["evidence"],
-            ]
-        ],
-        columns=[
-            "Check",
-            "Status",
-            "Reason",
-            "Policy Evidence"
-        ]
-    )
-
-    st.dataframe(
-        evaluation_df,
-        use_container_width=True,
-        hide_index=True
-    )
-
-    st.write("")
-
-    # ==========================================================
-    # FINAL DECISION
-    # ==========================================================
-
-    st.markdown("## 🏆 Final Decision")
-
-    decision_df = pd.DataFrame(
-        [
-            [
-                result["final_decision"]["decision"],
-                result["final_decision"]["reason"]
-            ]
-        ],
-        columns=[
-            "Decision",
-            "Reason"
-        ]
-    )
-
-    st.dataframe(
-        decision_df,
-        use_container_width=True,
-        hide_index=True
-    )
+    st.table(summary_rows)
 
     st.divider()
 
-    # ==========================================================
-    # PDF REPORT
-    # ==========================================================
+    # -------------------------------
+    # Coverage Analysis
+    # -------------------------------
+    st.subheader("Coverage Analysis")
 
-    buffer = BytesIO()
+    st.table([
+        {"Field": "Status", "Value": result["coverage_result"]["status"]},
+        {"Field": "Reason", "Value": result["coverage_result"]["reason"]},
+        {"Field": "Policy Evidence", "Value": result["coverage_result"]["evidence"]},
+    ])
 
-    doc = SimpleDocTemplate(buffer)
+    st.divider()
 
-    styles = getSampleStyleSheet()
+    # -------------------------------
+    # Waiting Period Analysis
+    # -------------------------------
+    st.subheader("Waiting Period Analysis")
 
-    story = []
+    st.table([
+        {"Field": "Status", "Value": result["waiting_period_result"]["status"]},
+        {"Field": "Reason", "Value": result["waiting_period_result"]["reason"]},
+        {"Field": "Policy Evidence", "Value": result["waiting_period_result"]["evidence"]},
+    ])
 
-    story.append(
-        Paragraph(
-            "<b>HEALTH INSURANCE CLAIM REPORT</b>",
-            styles["Title"]
-        )
-    )
+    st.divider()
 
-    story.append(Spacer(1, 20))
+    # -------------------------------
+    # Exclusion Analysis
+    # -------------------------------
+    st.subheader("Exclusion Analysis")
 
-    story.append(
-        Paragraph("<b>Claim Information</b>", styles["Heading2"])
-    )
+    st.table([
+        {"Field": "Status", "Value": result["exclusion_result"]["status"]},
+        {"Field": "Reason", "Value": result["exclusion_result"]["reason"]},
+        {"Field": "Policy Evidence", "Value": result["exclusion_result"]["evidence"]},
+    ])
 
-    story.append(
-        Paragraph(f"Claim ID : {result['claim_id']}", styles["BodyText"])
-    )
+    st.divider()
 
-    story.append(
-        Paragraph(f"Patient Name : {result['patient_name']}", styles["BodyText"])
-    )
+    # -------------------------------
+    # Fraud Analysis
+    # -------------------------------
+    st.subheader("Fraud Analysis")
 
-    story.append(
-        Paragraph(f"Policy Number : {result['policy_number']}", styles["BodyText"])
-    )
+    st.table([
+        {"Field": "Status", "Value": result["fraud_result"]["status"]},
+        {"Field": "Reason", "Value": result["fraud_result"]["reason"]},
+        {"Field": "Policy Evidence", "Value": result["fraud_result"]["evidence"]},
+    ])
 
-    story.append(
-        Paragraph(f"Diagnosis : {result['diagnosis']}", styles["BodyText"])
-    )
+    st.divider()
 
-    story.append(
-        Paragraph(f"Treatment : {result['treatment']}", styles["BodyText"])
-    )
+    # -------------------------------
+    # Final Decision
+    # -------------------------------
+    st.subheader("Final Decision")
 
-    story.append(Spacer(1, 20))
+    st.table([
+        {"Field": "Decision", "Value": result["final_decision"]["decision"]},
+        {"Field": "Reason", "Value": result["final_decision"]["reason"]},
+    ])
 
-    sections = [
-        ("Coverage Analysis", result["coverage_result"]),
-        ("Waiting Period Analysis", result["waiting_period_result"]),
-        ("Exclusion Analysis", result["exclusion_result"]),
-        ("Fraud Analysis", result["fraud_result"])
+
+
+# ---------------------------------------------------
+# Download PDF
+# ---------------------------------------------------
+if st.session_state.result:
+
+    result = st.session_state.result
+
+    pdf = FPDF()
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.add_page()
+
+    page_width = pdf.w - 20
+
+    # Title
+    pdf.set_font("Arial", "B", 16)
+    pdf.cell(page_width, 10, "Health Insurance Claim Report", ln=True, align="C")
+    pdf.ln(8)
+
+    # Claim Summary
+    pdf.set_font("Arial", "B", 14)
+    pdf.cell(page_width, 10, "Claim Summary", ln=True)
+
+    pdf.set_font("Arial", "", 11)
+
+    summary = [
+        ("Patient Name", result["patient_name"]),
+        ("Claim ID", result["claim_id"]),
+        ("Policy Number", result["policy_number"]),
+        ("Diagnosis", result["diagnosis"]),
+        ("Treatment", result["treatment"]),
     ]
 
-    for title, section in sections:
+    for field, value in summary:
+        pdf.multi_cell(page_width, 8, f"{field}: {value}")
 
-        story.append(
-            Paragraph(f"<b>{title}</b>", styles["Heading2"])
-        )
+    pdf.ln(5)
 
-        story.append(
-            Paragraph(
-                f"<b>Status:</b> {section['status']}",
-                styles["BodyText"]
-            )
-        )
+    def add_section(title, data):
+        pdf.set_font("Arial", "B", 13)
+        pdf.cell(page_width, 8, title, ln=True)
 
-        story.append(
-            Paragraph(
-                f"<b>Reason:</b> {section['reason']}",
-                styles["BodyText"]
-            )
-        )
+        pdf.set_font("Arial", "", 11)
 
-        story.append(
-            Paragraph(
-                f"<b>Policy Evidence:</b> {section['evidence']}",
-                styles["BodyText"]
-            )
-        )
+        for key, value in data.items():
+            label = key.replace("_", " ").title()
+            pdf.multi_cell(page_width, 8, f"{label}: {value}")
 
-        story.append(Spacer(1, 15))
+        pdf.ln(4)
 
-    story.append(
-        Paragraph("<b>Final Decision</b>", styles["Heading2"])
-    )
+    add_section("Coverage Analysis", result["coverage_result"])
+    add_section("Waiting Period Analysis", result["waiting_period_result"])
+    add_section("Exclusion Analysis", result["exclusion_result"])
+    add_section("Fraud Analysis", result["fraud_result"])
+    add_section("Final Decision", result["final_decision"])
 
-    story.append(
-        Paragraph(
-            f"<b>Decision:</b> {result['final_decision']['decision']}",
-            styles["BodyText"]
-        )
-    )
-
-    story.append(
-        Paragraph(
-            f"<b>Reason:</b> {result['final_decision']['reason']}",
-            styles["BodyText"]
-        )
-    )
-
-    doc.build(story)
-
-    pdf = buffer.getvalue()
-
-    buffer.close()
-
-    # ==========================================================
-    # DOWNLOAD PDF
-    # ==========================================================
+    try:
+        pdf_bytes = bytes(pdf.output(dest="S"))
+    except TypeError:
+        pdf_bytes = pdf.output(dest="S").encode("latin-1")
 
     st.download_button(
-        label="📄 Download Claim Report (PDF)",
-        data=pdf,
-        file_name=f"{result['claim_id']}_Claim_Report.pdf",
+        label="📄 Download PDF Report",
+        data=pdf_bytes,
+        file_name=f"claim_report_{result['claim_id']}.pdf",
         mime="application/pdf",
         use_container_width=True
     )
-
-    st.divider()
-
-    # ==========================================================
-    # CLAIM SUMMARY
-    # ==========================================================
-
-    st.markdown("## 📊 Claim Summary")
-
-    col1, col2, col3, col4 = st.columns(4)
-
-    with col1:
-        st.metric(
-            "Coverage",
-            result["coverage_result"]["status"]
-        )
-
-    with col2:
-        st.metric(
-            "Waiting Period",
-            result["waiting_period_result"]["status"]
-        )
-
-    with col3:
-        st.metric(
-            "Exclusion",
-            result["exclusion_result"]["status"]
-        )
-
-    with col4:
-        st.metric(
-            "Fraud",
-            result["fraud_result"]["status"]
-        )
-
-    st.divider()
-
-    decision = result["final_decision"]["decision"].lower()
-
-    if decision == "approved":
-
-        st.success(
-            f"✅ CLAIM APPROVED\n\n{result['final_decision']['reason']}"
-        )
-
-    elif decision == "rejected":
-
-        st.error(
-            f"❌ CLAIM REJECTED\n\n{result['final_decision']['reason']}"
-        )
-
-    else:
-
-        st.warning(
-            f"⏳ CLAIM PENDING\n\n{result['final_decision']['reason']}"
-        )
