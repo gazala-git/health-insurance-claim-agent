@@ -9,4 +9,4 @@ langgraph==0.6.6
 pypdf==6.0.0
 pandas==2.3.2
 python-dotenv==1.1.1
-reportlab==4.2.2
+fpdf2==2.8.4
