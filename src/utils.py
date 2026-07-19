@@ -1,7 +1,6 @@
 import os
 
 from langchain_groq import ChatGroq
-from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
 
@@ -17,12 +16,6 @@ from src.config import (
 # ----------------------------------
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "groq").lower()
 
-if LLM_PROVIDER == "gemini":
-    llm = ChatGoogleGenerativeAI(
-        model="gemini-3.5-flash",
-        temperature=0,
-    )
-else:
     llm = ChatGroq(
         api_key=GROQ_API_KEY,
         model=MODEL_NAME,
