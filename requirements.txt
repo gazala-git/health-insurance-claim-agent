@@ -19,4 +19,4 @@ pandas==2.3.2
 
 python-dotenv==1.1.1
 
-reportlab==5.0.0
+reportlab==4.2.2
