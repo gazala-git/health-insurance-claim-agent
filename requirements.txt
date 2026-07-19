@@ -18,4 +18,4 @@ Pillow==11.3.0
 pandas==2.3.2
 
 python-dotenv==1.1.1
-langchain-chroma==0.2.6
+langchain-chroma==0.2.4
